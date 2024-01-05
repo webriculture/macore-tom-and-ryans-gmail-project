@@ -11,18 +11,18 @@ const { client_secret, client_id, redirect_uris } = credentials.installed;
 const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
 
 
-if (fs.existsSync('tokens.json')){
+if (fs.existsSync('tokens.json')) {
     const storedTokens = fs.readFileSync('tokens.json');
     oAuth2Client.setCredentials(JSON.parse(storedTokens));
     getEmails(oAuth2Client);
 } else {
-const authUrl = oAuth2Client.generateAuthUrl({
+  const authUrl = oAuth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: 'https://www.googleapis.com/auth/gmail.readonly', // Add necessary scopes
     response_type: 'code',
     prompt: 'consent',
   });
-  
+
   console.log('Authorize this app by visiting this URL:', authUrl);
   //exec('start ' + authUrl);
 
@@ -30,7 +30,7 @@ const authUrl = oAuth2Client.generateAuthUrl({
     input: process.stdin,
     output: process.stdout,
   });
-  
+
   rl.question('Enter the code from that page here: ', async (code) => {
     rl.close();
     const { tokens } = await oAuth2Client.getToken(code);

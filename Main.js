@@ -146,168 +146,180 @@ async function checkParts(parts){
 }
 
 function getEmailBody(message) {
-    const parts = message.payload.parts;
-  
+  const parts = message.payload.parts;
 
-    if (message.payload && message.payload.body && message.payload.body.data) {
-        const emailBody = Buffer.from(message.payload.body.data, 'base64').toString('utf-8');
-        return emailBody;
-    } else if (parts && parts.length > 0) {
-      return checkParts(parts);
-    }
-
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-    }
-
-    // If no body part is found, handle accordingly
-    return 'No body found in the email';
+  if (
+      message.payload &&
+      message.payload.body &&
+      message.payload.body.data
+  ) {
+      const emailBody = Buffer.from(message.payload.body.data, 'base64').toString('utf-8');
+      return emailBody;
+  }
+  else if (parts && parts.length > 0) {
+    return checkParts(parts);
   }
 
-  async function getPath(subjectLine){
-    let path = 'NONE';
-    subjectLine = subjectLine.toLowerCase();
-    let orderFolder = await getOrderFolder(subjectLine);
-
-    if(subjectLine.includes("inventory check") || subjectLine.includes("date assignment") || subjectLine.includes("outside service alert") || subjectLine.includes("quote request")){
-      path = orderFolder + "/Emails/OE Tech/";
-    }
-    else if (subjectLine.includes("order complete")){
-      path = orderFolder + "/Shipping/";
-    }
-    else if (subjectLine.includes("macore label order"))
-    {
-      path = orderFolder + "/Emails/CSR-Client/";
-    }
-    else if(subjectLine.includes('macore.com - order received')){
-      path = root + "/_NEW WEB ORDERS/";
-    }
-    else{
-      path = orderFolder + "/";
-    }
-
-    return path;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
   }
+
+  // If no body part is found, handle accordingly
+  return 'No body found in the email';
+}
+
+async function getPath(subjectLine){
+  let path = 'NONE';
+  subjectLine = subjectLine.toLowerCase();
+  let orderFolder = await getOrderFolder(subjectLine);
+
+  if (
+      subjectLine.includes("inventory check") ||
+      subjectLine.includes("date assignment") ||
+      subjectLine.includes("outside service alert") ||
+      subjectLine.includes("quote request")
+  ) {
+    path = orderFolder + "/Emails/OE Tech/";
+  }
+  else if (subjectLine.includes("order complete")) {
+    path = orderFolder + "/Shipping/";
+  }
+  else if (subjectLine.includes("macore label order")) {
+    path = orderFolder + "/Emails/CSR-Client/";
+  }
+  else if (subjectLine.includes('macore.com - order received')) {
+    path = root + "/_NEW WEB ORDERS/";
+  }
+  else {
+    path = orderFolder + "/";
+  }
+
+  return path;
+}
 
 async function getOrderFolder(subjectLine) {
   let match = subjectLine.match(/#(\d{4})\b/);
   let accountNumber = match ? match[0] : null;
-  if(!accountNumber){return "NONE";}
+
+  if (!accountNumber) { return "NONE"; }
+
   accountNumber = accountNumber.slice(1);
 
   let orderMatch = subjectLine.match(/#(\d{5})\b/);
   let orderNumber = orderMatch ? orderMatch[0] : null;
-  if(!orderNumber){return "NONE";}
+
+  if (!orderNumber) { return "NONE"; }
+
   orderNumber = orderNumber.slice(1);
 
   let accountFolder = await getAccountFolder(accountNumber);
-
   let orderFolder = await findSubfolder(root + accountFolder, orderNumber);
+
   return orderFolder;
 }
 
-  async function getAccountFolder(accountNumber){
-      const files = await fsPromise.readdir(root);
-        let matchingFolder = files.find(file => {
-          const folderPath = path.join(root, file);
-          return fs.statSync(folderPath).isDirectory() && file.endsWith(`_${accountNumber}`);
+async function getAccountFolder(accountNumber){
+  const files = await fsPromise.readdir(root);
+  let matchingFolder = files.find(file => {
+    const folderPath = path.join(root, file);
+    return fs.statSync(folderPath).isDirectory() && file.endsWith(`_${accountNumber}`);
+  });
+
+  if (!matchingFolder) {
+    console.log("Creating account folder");
+    matchingFolder = "_New Client _" + accountNumber;
+
+    await fs.mkdirSync(root + "/" + matchingFolder);
+    //await fs.cpSync(root + "/_NEW CLIENT FOLDER TEMPLATE/Client Name_9999", root + "/" + matchingFolder + "/", { recursive: true });
+  }
+
+  return matchingFolder;
+}
+
+async function findSubfolder(rootFolder, orderNumber) {
+  const files = await fsPromise.readdir(rootFolder); // Read the contents of the root folder synchronously
+
+  for (const file of files) {
+    const folderPath = path.join(rootFolder, file);
+    const stats = fs.statSync(folderPath);
+
+    if (stats.isDirectory()) {
+      const subFolderPath = path.join(folderPath, orderNumber);
+      if (fs.existsSync(subFolderPath) && fs.statSync(subFolderPath).isDirectory()) {
+        // Do something with the folder if needed
+        return subFolderPath; // Return the path to the found folder
+      }/* else {
+        // If it's not the target folder, check its subfolders
+        const subfolderPath = findSubfolder(folderPath);
+        if (subfolderPath) {
+          return subfolderPath; // Return the path if found in subfolder
+        }
+      }*/
+    }
+  }
+
+  //Check if current year folder exists
+  let yearFolder = rootFolder + "/" + new Date().getFullYear();
+  if (await fs.existsSync(yearFolder) == false) {
+    //Create if it doesn't
+    await fs.mkdirSync(yearFolder);
+  }
+
+  //Create order folder within
+  let subFolderPath = yearFolder + "/" + orderNumber;
+  await fs.cpSync(root + "/_NEW ORDER FOLDER TEMPLATE/99999", subFolderPath, { recursive: true });
+  return subFolderPath;
+}
+
+function downloadAttachments(email, path){
+  const parts = email.payload.parts;
+  if (parts) {
+    parts.forEach(part => {
+      if (part.filename) {
+        const attachmentId = part.body.attachmentId;
+        gmail.users.messages.attachments.get({
+          userId: 'me',
+          messageId: email.id,
+          id: attachmentId,
+        }, (err, attachment) => {
+          if (err) return console.log('Error while fetching attachment:', err);
+
+          const data = attachment.data;
+          const fileData = Buffer.from(data.data, 'base64');
+          fs.writeFileSync(path + part.filename, fileData);
+          console.log('Attachment downloaded:', part.filename);
         });
-
-        if(!matchingFolder){
-          console.log("Creating account folder");
-          matchingFolder = "_New Client _" + accountNumber;
-    
-          await fs.mkdirSync(root + "/" + matchingFolder);
-          //await fs.cpSync(root + "/_NEW CLIENT FOLDER TEMPLATE/Client Name_9999", root + "/" + matchingFolder + "/", { recursive: true });
-        }
-
-        return matchingFolder;
+      }
+    });
   }
+}
 
-  async function findSubfolder(rootFolder, orderNumber) {
-      const files = await fsPromise.readdir(rootFolder); // Read the contents of the root folder synchronously
-      
-      for (const file of files) {
-        const folderPath = path.join(rootFolder, file);
-        const stats = fs.statSync(folderPath);
-  
-        if (stats.isDirectory()) {
-          const subFolderPath = path.join(folderPath, orderNumber);
-          if (fs.existsSync(subFolderPath) && fs.statSync(subFolderPath).isDirectory()) {
-            // Do something with the folder if needed
-            return subFolderPath; // Return the path to the found folder
-          }/* else {
-            // If it's not the target folder, check its subfolders
-            const subfolderPath = findSubfolder(folderPath);
-            if (subfolderPath) {
-              return subfolderPath; // Return the path if found in subfolder
-            }
-          }*/
+async function readAttachments(email) {
+  const parts = email.payload.parts;
+  let attachments = [];
+
+  if (parts) {
+    for (const part of parts) {
+      if (part.filename) {
+        console.log(part.filename);
+        const attachmentId = part.body.attachmentId;
+        const attachment = await gmail.users.messages.attachments.get({
+          userId: 'me',
+          messageId: email.id,
+          id: attachmentId,
+        });
+        console.log("I might be reading an attachment named " + part.filename);
+        if (attachment) {
+          console.log("Reading attachment named " + part.filename);
+          const data = attachment.data;
+          const fileData = Buffer.from(data.data, 'base64');
+          attachments.push(attachment);
         }
       }
-
-      //Check if current year folder exists
-      let yearFolder = rootFolder + "/" + new Date().getFullYear();
-      if(await fs.existsSync(yearFolder) == false){
-        //Create if it doesn't
-        await fs.mkdirSync(yearFolder);
-      }
-      
-      //Create order folder within
-      let subFolderPath = yearFolder + "/" + orderNumber;
-      await fs.cpSync(root + "/_NEW ORDER FOLDER TEMPLATE/99999", subFolderPath, { recursive: true });
-      return subFolderPath;
+    }
   }
-
-  function downloadAttachments(email, path){
-    const parts = email.payload.parts;
-    if(parts){
-          parts.forEach(part => {
-            if (part.filename) {
-              const attachmentId = part.body.attachmentId;
-              gmail.users.messages.attachments.get({
-                userId: 'me',
-                messageId: email.id,
-                id: attachmentId,
-              }, (err, attachment) => {
-                if (err) return console.log('Error while fetching attachment:', err);
-
-                const data = attachment.data;
-                const fileData = Buffer.from(data.data, 'base64');
-                fs.writeFileSync(path + part.filename, fileData);
-                console.log('Attachment downloaded:', part.filename);
-              });
-            }
-          });
-        }
-
-  }
-
-  async function readAttachments(email){
-    const parts = email.payload.parts;
-    let attachments = [];
-    if(parts){
-          for (const part of parts) {
-            if (part.filename) {
-              console.log(part.filename);
-              const attachmentId = part.body.attachmentId;
-              const attachment = await gmail.users.messages.attachments.get({
-                userId: 'me',
-                messageId: email.id,
-                id: attachmentId,
-              });
-                console.log("I might be reading an attachment named " + part.filename);
-                if(attachment){
-                  console.log("Reading attachment named " + part.filename);
-                  const data = attachment.data;
-                  const fileData = Buffer.from(data.data, 'base64');
-                  attachments.push(attachment);
-                }
-            }
-          }
-        }
-    return attachments;
-  }
+  return attachments;
+}
 
 async function logError(err, subjectLine){
   const fileText = subjectLine + "\n" +"\n" + err;
@@ -344,25 +356,23 @@ async function convertToPDF_withHeader(emailBody, emailMetadata, savePath, id, p
 
 
 
-
   const browser = await puppeteer.launch({ headless: "new" });
   const page = await browser.newPage();
-  
   const to = escapePointyBrackets(emailMetadata.toName);
 
   // Create a header string from the email metadata
   const fullHTMLContent = `
-  <div class="email-header">
-    <p><span style="font-size: 18px;"><b>${emailMetadata.subject}</b></span></p>
-    <p><b>From: ${escapePointyBrackets(emailMetadata.fromName)}</b></p>
-    <p><b>To: ${to}</b></p>
-    <p><b>Date: ${emailMetadata.date}</b></p>
-    <!-- Use <br> tags for manual line breaks if needed -->
-  </div>
-  <div class="email-body">
-    ${emailBody}
-    ${embeddedImagesHTML}
-  </div>
+<div class="email-header">
+  <p><span style="font-size: 18px;"><b>${emailMetadata.subject}</b></span></p>
+  <p><b>From: ${escapePointyBrackets(emailMetadata.fromName)}</b></p>
+  <p><b>To: ${to}</b></p>
+  <p><b>Date: ${emailMetadata.date}</b></p>
+  <!-- Use <br> tags for manual line breaks if needed -->
+</div>
+<div class="email-body">
+  ${emailBody}
+  ${embeddedImagesHTML}
+</div>
 `;
 
   await page.setContent(fullHTMLContent);
@@ -370,26 +380,25 @@ async function convertToPDF_withHeader(emailBody, emailMetadata, savePath, id, p
   // Add CSS to style the header
   await page.addStyleTag({
     content: `
-      .email-header {
-        margin: 5px 0; /* Adjust margin for spacing between lines */
-        line-height: 0.1; /* Set the line-height to a smaller value (e.g., 1) */
-        /* Add other styles to match Gmail header */
-      }
-      .email-body {
-        /* Add styles for email body */
-      }
-    `,
+.email-header {
+  margin: 5px 0; /* Adjust margin for spacing between lines */
+  line-height: 0.1; /* Set the line-height to a smaller value (e.g., 1) */
+  /* Add other styles to match Gmail header */
+}
+.email-body {
+  /* Add styles for email body */
+}
+`,
   });
 
   const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
-  
   const pdfDoc = await PDFDocument.load(pdfBuffer);
 
-    // Add custom metadata (hidden ID in this case)
-    pdfDoc.setKeywords([id]); // Set keywords
+  // Add custom metadata (hidden ID in this case)
+  pdfDoc.setKeywords([id]); // Set keywords
 
-    // Save the modified PDF
-    const modifiedPdfBytes = await pdfDoc.save();
+  // Save the modified PDF
+  const modifiedPdfBytes = await pdfDoc.save();
 
   if (savePath) {
     await fs.writeFileSync(savePath, modifiedPdfBytes);
@@ -400,81 +409,93 @@ async function convertToPDF_withHeader(emailBody, emailMetadata, savePath, id, p
   return pdfBuffer;
 }
 
-async function getMetaData (res){
+async function getMetaData (res) {
   const headers = res.data.payload.headers;
-    // Extract required metadata such as Subject, From, To, Date, etc.
-    const metadata = {
-      subject: '',
-      from: '',
-      fromName: '',
-      to: '',
-      toName: '',
-      date: '',
-      // Add other fields you need
-    };
+  // Extract required metadata such as Subject, From, To, Date, etc.
+  const metadata = {
+    subject: '',
+    from: '',
+    fromName: '',
+    to: '',
+    toName: '',
+    date: '',
+    // Add other fields you need
+  };
 
-    // Loop through headers and extract required information
-    headers.forEach((header) => {
-      if (header.name === 'Subject') {
-        metadata.subject = header.value;
-      } else if (header.name === 'From') {
-        metadata.fromName = header.value;
-        const matches = header.value.match(/<([^>]+)>/); // Extract email address within angle brackets
-        if (matches) {
-          metadata.from = matches[1]; // Assign the extracted email address
-        } else {
-          // If no angle brackets found, extract email from the entire string
-          const emailRegex = /[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/; // Simple email regex pattern
-          const emailMatches = header.value.match(emailRegex);
-          if (emailMatches) {
-            metadata.from = emailMatches[0]; // Assign the extracted email address
-          }
-        }
-      } else if (header.name === 'To') {
-        metadata.toName = header.value;
-        const matches = header.value.match(/<([^>]+)>/); // Extract email address within angle brackets
-        if (matches) {
-          metadata.to = matches[1]; // Assign the extracted email address
-        } else {
-          // If no angle brackets found, extract email from the entire string
-          const emailRegex = /[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/; // Simple email regex pattern
-          const emailMatches = header.value.match(emailRegex);
-          if (emailMatches) {
-            metadata.to = emailMatches[0]; // Assign the extracted email address
-          }
-        }
-      } else if (header.name === 'Date') {
-        metadata.date = header.value;
+  // Loop through headers and extract required information
+  headers.forEach((header) => {
+    if (header.name === 'Subject') {
+      metadata.subject = header.value;
+    }
+    else if (header.name === 'From') {
+      metadata.fromName = header.value;
+      const matches = header.value.match(/<([^>]+)>/); // Extract email address within angle brackets
+
+      if (matches) {
+        metadata.from = matches[1]; // Assign the extracted email address
       }
-      // Add other header fields you need
-    });
+      else {
+        // If no angle brackets found, extract email from the entire string
+        const emailRegex = /[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/; // Simple email regex pattern
+        const emailMatches = header.value.match(emailRegex);
 
-    return metadata;
+        if (emailMatches) {
+          metadata.from = emailMatches[0]; // Assign the extracted email address
+        }
+      }
+    }
+    else if (header.name === 'To') {
+      metadata.toName = header.value;
+      const matches = header.value.match(/<([^>]+)>/); // Extract email address within angle brackets
+
+      if (matches) {
+        metadata.to = matches[1]; // Assign the extracted email address
+      }
+      else {
+        // If no angle brackets found, extract email from the entire string
+        const emailRegex = /[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/; // Simple email regex pattern
+        const emailMatches = header.value.match(emailRegex);
+
+        if (emailMatches) {
+          metadata.to = emailMatches[0]; // Assign the extracted email address
+        }
+      }
+    }
+    else if (header.name === 'Date') {
+      metadata.date = header.value;
+    }
+    // Add other header fields you need
+  });
+
+  return metadata;
 }
 
 async function readMetadata(filePath) {
-    const pdfBytes = await fs.readFileSync(filePath);
-    const pdfDoc = await PDFDocument.load(pdfBytes);
+  const pdfBytes = await fs.readFileSync(filePath);
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  const keywords = pdfDoc.getKeywords();
 
-    const keywords = pdfDoc.getKeywords();
-  
-    return keywords;
+  return keywords;
 }
 
 function escapePointyBrackets(text){
   return text.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-//let firstError = true;
+// let firstError = true;
 
 process.on('uncaughtException', (error) => {
-  //if(firstError){
   logError(error, currentSubjectLine);
-  /*firstError = false;
+
+  /*
+  if (firstError) {
+    logError(error, currentSubjectLine);
+    firstError = false;
   }
-  else{
+  else {
     throw(error);
-  }*/
+  }
+  */
 });
 
 module.exports = getEmails;
