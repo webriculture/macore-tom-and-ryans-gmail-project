@@ -14,7 +14,8 @@ let shouldBreak = false;
 async function getEmails(oAuth2Client) {
   gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
 
-    console.log("Now fetching emails");
+  console.log("Now fetching emails");
+
   try {
     const res = await gmail.users.messages.list({
       userId: 'me', // 'me' refers to the authenticated user
@@ -27,10 +28,10 @@ async function getEmails(oAuth2Client) {
       maxResults: 10,
     });
 
-    if(res.data.messages){
+    if (res.data.messages) {
       for (const message of res.data.messages) {
         await processMessage(message);
-        if(shouldBreak){break;}
+        if (shouldBreak) { break; }
       }
     }
 
@@ -41,11 +42,11 @@ async function getEmails(oAuth2Client) {
     if (sentRes.data.messages) {
       for (const message of sentRes.data.messages) {
         await processMessage(message);
-        if(shouldBreak){break;}
+        if (shouldBreak) { break; }
       }
     }
-
-  } catch (error) {
+  }
+  catch (error) {
     console.error('Error fetching emails:', error);
   }
 }
@@ -75,45 +76,60 @@ async function processMessage(message) {
 
     let savePath = await getPath(subjectRaw);
 
-    /*if(!savePath){
+    /*
+    if (!savePath) {
       savePath = await createFolder(subjectRaw);
-    }*/
+    }
+    */
     if (!savePath.startsWith("NONE")) {
-      /*convertToPDF(emailBody).then((pdfBytes) => {
-          fs.writeFileSync(savePath + subjectLine + '.pdf', pdfBytes);
-          console.log('Email saved as ' + savePath + subjectLine + '.pdf');
-        }).catch((error) => {
-          console.error('Error converting to PDF:', error);
-        });*/
+      /*
+      convertToPDF(emailBody).then((pdfBytes) => {
+        fs.writeFileSync(savePath + subjectLine + '.pdf', pdfBytes);
+        console.log('Email saved as ' + savePath + subjectLine + '.pdf');
+      }).catch((error) => {
+        console.error('Error converting to PDF:', error);
+      });
+      */
 
       let suffix = "";
-      if(subjectRaw.includes("Macore.com - Order Received")){
+      if (subjectRaw.includes("Macore.com - Order Received")) {
         const dateObject = new Date(email.internalDate);
-        const formattedDate = dateObject.toLocaleString('default', { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+        const formattedDate = dateObject.toLocaleString(
+          'default',
+          {
+            year: 'numeric',
+            month: 'numeric',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: 'numeric',
+            second: 'numeric'
+          }
+        );
 
         // Example filename using the formatted date
         suffix = `${formattedDate.replace(/[^\w\s]/gi, '')}`;
       }
-      else{
+      else {
         let fromName = metadata.from.split(" <")[0];
         suffix = fromName.replace(".", "_").replace("@", "_at_");
       }
 
       const fullPath = savePath + subjectLine + " " + suffix + ".pdf";
 
-      if(await fs.existsSync(fullPath)){
+      if (await fs.existsSync(fullPath)) {
         const keywords = await readMetadata(fullPath);
-        if(keywords == email.id){
-          //shouldBreak = true;
+        if (keywords == email.id) {
+          // shouldBreak = true;
         }
       }
 
-      if(!shouldBreak){
+      if (!shouldBreak) {
         const attachments = await readAttachments(email);
         await convertToPDF_withHeader(emailBody, metadata, fullPath, email.id, email.payload.parts);
 
         let attachSavePath = savePath;
         const csrFolder = "/Emails/CSR-Client/";
+
         if (savePath.includes(csrFolder)) {
           attachSavePath = savePath.substring(0, savePath.indexOf(csrFolder)) + "/Proofs to Client/";
         }
@@ -137,7 +153,7 @@ async function checkParts(parts){
     if (part.mimeType === 'text/html' && part.body && part.body.data) {
       return Buffer.from(part.body.data, 'base64').toString('utf-8');
     }
-    else if (part.parts){
+    else if (part.parts) {
       return checkParts(part.parts);
     }
   }
