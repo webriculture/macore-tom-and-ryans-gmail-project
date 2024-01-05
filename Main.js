@@ -8,9 +8,7 @@ const { PDFDocument } = require('pdf-lib');
 const root = '//macorebx/CLIENT-FILES/'
 
 let gmail;
-
 let currentSubjectLine = "";
-
 let shouldBreak = false;
 
 async function getEmails(oAuth2Client) {
@@ -473,9 +471,8 @@ async function getMetaData (res) {
 async function readMetadata(filePath) {
   const pdfBytes = await fs.readFileSync(filePath);
   const pdfDoc = await PDFDocument.load(pdfBytes);
-  const keywords = pdfDoc.getKeywords();
 
-  return keywords;
+  return pdfDoc.getKeywords();
 }
 
 function escapePointyBrackets(text){
