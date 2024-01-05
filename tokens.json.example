@@ -1,0 +1,1 @@
+{"access_token":"[GOOGLE-PROVIDED ACCESS TOKEN STRING]","refresh_token":"[GOOGLE-PROVIDED REFRESH TOKEN STRING]","scope":"https://www.googleapis.com/auth/gmail.readonly","token_type":"Bearer","expiry_date":1704479060260}
